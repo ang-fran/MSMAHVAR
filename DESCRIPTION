@@ -1,0 +1,18 @@
+Package: MSMAHVAR
+Type: Package
+Title: Markov-Switching Mean-Adjusted VAR Models
+Version: 0.1.0
+Authors@R: 
+    person("Angela-Frances", "Ibhade", email = "kiaraibhade@gmail.com", role = c("aut", "cre"))
+Description: Implements EM estimation for mean-adjusted Markov-Switching VAR (MSMAH-VAR) models.
+    Supports fitting on simulated or real data, returns regime probabilities, state-dependent coefficients, and covariance matrices.
+License: MIT + file LICENSE
+Encoding: UTF-8
+LazyData: true
+Imports:
+    tseries,
+    vars,
+    urca,
+    stats
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3
