@@ -451,7 +451,9 @@ msmah_var_m_step <- function(Y, gammaZ, smoothed_joint, mu_prev, A_prev, p, eps 
 msmah_var_em <- function(Y, p,
                          mu_init, A_init, Sigma_init, P_init,
                          pi = NULL,
-                         max_iter = 300, tol = 1e-6, eps = 1e-10, verbose = TRUE) {
+                         max_iter = 300, tol = 1e-6, eps = 1e-10,
+                         step_size = 0.5,        # <-- new parameter
+                         verbose = TRUE) {
 
   Tn <- nrow(Y)
   M <- nrow(P_init)
@@ -459,22 +461,46 @@ msmah_var_em <- function(Y, p,
   if (is.null(pi)) pi <- rep(1/M, M)
 
   mu_curr <- mu_init
-  A_curr <- A_init
-  S_curr <- Sigma_init
-  P_curr <- P_init
+  A_curr  <- A_init
+  S_curr  <- Sigma_init
+  P_curr  <- P_init
 
   ll <- numeric(max_iter)
 
   for (iter in 1:max_iter) {
-    E <- msmah_var_e_step(Y, P_curr, mu_curr, A_curr, S_curr, p, pi = pi, eps = eps)
+    E    <- msmah_var_e_step(Y, P_curr, mu_curr, A_curr, S_curr, p, pi = pi, eps = eps)
     ll[iter] <- E$loglik
 
     Mres <- msmah_var_m_step(Y, E$gammaZ, E$smoothed_joint, mu_curr, A_curr, p, eps = eps)
 
-    mu_curr <- Mres$mu
-    A_curr  <- Mres$A_list
-    S_curr  <- Mres$Sigma_list
-    P_curr  <- Mres$P_hat
+    # ---- Damped update: theta_new = theta_old + step_size * (theta_mstep - theta_old) ----
+
+    # mu: list of k-vectors
+    mu_next <- lapply(seq_len(M), function(j)
+      mu_curr[[j]] + step_size * (Mres$mu[[j]] - mu_curr[[j]])
+    )
+
+    # A_list: list (M) of lists (p) of k x k matrices
+    A_next <- lapply(seq_len(M), function(j)
+      lapply(seq_len(p), function(lag)
+        A_curr[[j]][[lag]] + step_size * (Mres$A_list[[j]][[lag]] - A_curr[[j]][[lag]])
+      )
+    )
+
+    # Sigma_list: list of k x k matrices
+    S_next <- lapply(seq_len(M), function(j)
+      S_curr[[j]] + step_size * (Mres$Sigma_list[[j]] - S_curr[[j]])
+    )
+
+    # P: M x M matrix
+    P_next <- P_curr + step_size * (Mres$P_hat - P_curr)
+    # Re-normalise rows so P stays a valid transition matrix
+    P_next <- P_next / rowSums(P_next)
+
+    mu_curr <- mu_next
+    A_curr  <- A_next
+    S_curr  <- S_next
+    P_curr  <- P_next
 
     if (verbose && iter %% 10 == 0) cat("iter:", iter, " loglik:", ll[iter], "\n")
 
@@ -487,7 +513,6 @@ msmah_var_em <- function(Y, p,
 
   list(mu = mu_curr, A_list = A_curr, Sigma_list = S_curr, P_hat = P_curr, loglik = ll)
 }
-
 #' Compare fitted vs true parameters
 #' @export
 compare_msmah_var <- function(mu_true, A_true, S_true, P_true,
