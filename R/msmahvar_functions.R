@@ -445,6 +445,7 @@ msmah_var_m_step <- function(Y, gammaZ, smoothed_joint, mu_prev, A_prev, p, eps 
 #' @param max_iter Maximum iterations
 #' @param tol Convergence tolerance
 #' @param eps Small constant for stability
+#' @param step_size Controls step size between iterations
 #' @param verbose Print progress
 #' @return List with fitted parameters and log-likelihood
 #' @export
