@@ -15,6 +15,7 @@ msmah_var_em(
   max_iter = 300,
   tol = 1e-06,
   eps = 1e-10,
+  step_size = 0.5,
   verbose = TRUE
 )
 }
@@ -38,6 +39,8 @@ msmah_var_em(
 \item{tol}{Convergence tolerance}
 
 \item{eps}{Small constant for stability}
+
+\item{step_size}{Controls step size between iterations}
 
 \item{verbose}{Print progress}
 }
