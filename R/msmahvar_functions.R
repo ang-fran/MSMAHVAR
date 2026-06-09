@@ -1,3 +1,5 @@
+#' @importFrom stats rnorm
+NULL
 # ===============================================
 # MSMAHVAR R Functions
 # ===============================================
@@ -148,6 +150,13 @@ encode_z <- function(z, M, p) {
 }
 
 #' Compute log-likelihood for all t
+#' @param Y Data matrix (T x k)
+#' @param mu List of regime means
+#' @param A_list List of AR matrices
+#' @param Sigma_list List of covariance matrices
+#' @param M Number of regimes
+#' @param p Lag order
+#' @param eps Numerical stability constant
 #' @export
 compute_log_g_allt <- function(Y, mu, A_list, Sigma_list, M, p, eps = 1e-12) {
   Tn <- nrow(Y)
@@ -515,6 +524,15 @@ msmah_var_em <- function(Y, p,
   list(mu = mu_curr, A_list = A_curr, Sigma_list = S_curr, P_hat = P_curr, loglik = ll)
 }
 #' Compare fitted vs true parameters
+#' @param mu_true List of true mean vectors
+#' @param A_true List of true AR matrices
+#' @param S_true List of true covariance matrices
+#' @param P_true True transition matrix
+#' @param mu_hat List of estimated mean vectors
+#' @param A_hat List of estimated AR matrices
+#' @param S_hat List of estimated covariance matrices
+#' @param P_hat Estimated transition matrix
+#' @param digits Number of decimal places to print
 #' @export
 compare_msmah_var <- function(mu_true, A_true, S_true, P_true,
                               mu_hat,  A_hat,  S_hat,  P_hat,

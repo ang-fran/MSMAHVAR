@@ -6,6 +6,21 @@
 \usage{
 compute_log_g_allt(Y, mu, A_list, Sigma_list, M, p, eps = 1e-12)
 }
+\arguments{
+\item{Y}{Data matrix (T x k)}
+
+\item{mu}{List of regime means}
+
+\item{A_list}{List of AR matrices}
+
+\item{Sigma_list}{List of covariance matrices}
+
+\item{M}{Number of regimes}
+
+\item{p}{Lag order}
+
+\item{eps}{Numerical stability constant}
+}
 \description{
 Compute log-likelihood for all t
 }

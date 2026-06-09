@@ -78,7 +78,7 @@
     },
     "curl": {
       "Package": "curl",
-      "Version": "7.0.0",
+      "Version": "7.1.0",
       "Source": "Repository",
       "Type": "Package",
       "Title": "A Modern and Flexible Web Client for R",
@@ -108,7 +108,7 @@
       "NeedsCompilation": "yes",
       "Author": "Jeroen Ooms [aut, cre] (ORCID: <https://orcid.org/0000-0002-4035-0289>), Hadley Wickham [ctb], Posit Software, PBC [cph]",
       "Maintainer": "Jeroen Ooms <jeroenooms@gmail.com>",
-      "Repository": "CRAN"
+      "Repository": "RSPM"
     },
     "jsonlite": {
       "Package": "jsonlite",
@@ -438,7 +438,7 @@
     },
     "tseries": {
       "Package": "tseries",
-      "Version": "0.10-60",
+      "Version": "0.10-61",
       "Source": "Repository",
       "Encoding": "UTF-8",
       "Title": "Time Series Analysis and Computational Finance",

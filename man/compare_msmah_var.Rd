@@ -16,6 +16,25 @@ compare_msmah_var(
   digits = 4
 )
 }
+\arguments{
+\item{mu_true}{List of true mean vectors}
+
+\item{A_true}{List of true AR matrices}
+
+\item{S_true}{List of true covariance matrices}
+
+\item{P_true}{True transition matrix}
+
+\item{mu_hat}{List of estimated mean vectors}
+
+\item{A_hat}{List of estimated AR matrices}
+
+\item{S_hat}{List of estimated covariance matrices}
+
+\item{P_hat}{Estimated transition matrix}
+
+\item{digits}{Number of decimal places to print}
+}
 \description{
 Compare fitted vs true parameters
 }
