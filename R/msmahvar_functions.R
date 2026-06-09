@@ -159,7 +159,7 @@ compute_log_g_allt <- function(Y, mu, A_list, Sigma_list, M, p, eps = 1e-12) {
   for (t in 1:Tn) {
     q <- min(p, t - 1)
     for (z in 1:K) {
-      zt <- decode_z(z, M, p)   # (s_t, s_{t-1},...,s_{t-p})
+      zt <- decode_z(z, M, p)   # (s_t, s_\{t-1\},...,s_\{t-p\})
       st <- zt[1]
 
       mean_t <- mu[[st]]
@@ -312,7 +312,7 @@ msmah_var_m_step <- function(Y, gammaZ, smoothed_joint, mu_prev, A_prev, p, eps 
   K  <- ncol(gammaZ)
   stopifnot(K == M * (M + 1)^p)
 
-  # ---- (A) Update A_{lag,j} via weighted multivariate LS ----
+  # ---- (A) Update A_\{lag,j\} via weighted multivariate LS ----
   A_new <- vector("list", M)
   for (j in 1:M) {
     # Accumulate XtWX and XtWY where X is kp and Ytil is k
