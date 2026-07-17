@@ -36,7 +36,7 @@ Markov chain.
 ## Installation
 ```r
 # Install from GitHub using devtools
-devtools::install_github("ang-fran/MSMAHVAR")
+devtools::install_github("ang-fran/MSM-VAR")
 ```
 
 ---
