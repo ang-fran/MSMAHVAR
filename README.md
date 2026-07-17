@@ -1,12 +1,12 @@
 ---
-title: MSMAH-VAR
+title: MSM-VAR
 output: github_document
 ---
 
-# MSMAH-VAR: Markov-Switching Mean-Adjusted VAR — R Package
+# MSM-VAR: Markov-Switching Mean-Adjusted VAR — R Package
 
-An R package implementing the **Markov-Switching Mean-Adjusted VAR (MSMAH-VAR)** model,
-where the mean, autoregressive coefficients, and covariance matrix are all
+An R package implementing the **Markov-Switching Mean-Adjusted VAR (MSM-VAR)** model,
+where the mean, autoregressive coefficients, and covariance matrix are interchangeably
 state-dependent. Estimation is performed via an exact EM algorithm operating on
 augmented states.
 
@@ -17,7 +17,7 @@ augmented states.
 Standard VAR models assume fixed parameters across time, which is often unrealistic
 for economic and financial data that exhibit structural breaks or regime changes
 (e.g., expansions vs. recessions, high vs. low volatility periods).
-MSMAH-VAR addresses this by allowing the model's mean, dynamics, and noise
+MSM-VAR addresses this by allowing the model's mean, dynamics, and noise
 structure to switch across a discrete set of hidden regimes, governed by a
 Markov chain.
 
@@ -25,7 +25,7 @@ Markov chain.
 
 ## Features
 
-- **State-dependent means, AR coefficients, and covariance matrices**
+- **State-dependent means, AR coefficients, and/or covariance matrices**
 - **Exact EM algorithm** for parameter estimation with augmented state representation
 - Hamilton filtering and smoothing for regime probability inference
 - Compatible with both simulated data and real-world multivariate time series
@@ -43,7 +43,7 @@ devtools::install_github("ang-fran/MSMAHVAR")
 
 ## Usage
 ```r
-library(MSMAHVAR)
+library(MSM-VAR)
 
 # Simulate data from a 2-state MSMAH-VAR(1) process
 sim_data <- simulate_msmahvar(
