@@ -1,7 +1,7 @@
 #' @importFrom stats rnorm
 NULL
 # ===============================================
-# MSMAHVAR R Functions
+# MSM-VAR R Functions
 # ===============================================
 
 #' Log-sum-exp trick for numerical stability
@@ -49,7 +49,7 @@ rmvnorm1 <- function(mean, Sigma) {
   as.numeric(mean + t(R) %*% rnorm(k))
 }
 
-#' Simulate MSMAH-VAR(p) data
+#' Simulate MSM-VAR(p) data
 #'
 #' @param T Number of time points
 #' @param M Number of regimes
@@ -62,7 +62,7 @@ rmvnorm1 <- function(mean, Sigma) {
 #' @param pi Initial regime probabilities (default uniform)
 #' @return List with Y (data) and s (hidden regimes)
 #' @export
-simulate_msmah_var <- function(T, M, k, p, mu, A_list, Sigma_list, P, pi = NULL) {
+simulate_ms_var <- function(T, M, k, p, mu, A_list, Sigma_list, P, pi = NULL) {
   stopifnot(length(mu) == M, length(A_list) == M, length(Sigma_list) == M)
   stopifnot(nrow(P) == M, ncol(P) == M)
   for (j in 1:M) {
@@ -189,7 +189,7 @@ compute_log_g_allt <- function(Y, mu, A_list, Sigma_list, M, p, eps = 1e-12) {
 }
 
 #' @keywords internal
-msmah_var_e_step <- function(Y, P_hat, mu, A_list, Sigma_list, p, pi = NULL, eps = 1e-12) {
+ms_var_e_step <- function(Y, P_hat, mu, A_list, Sigma_list, p, pi = NULL, eps = 1e-12) {
   Tn <- nrow(Y)
   M  <- nrow(P_hat)
   stopifnot(ncol(P_hat) == M)
@@ -290,16 +290,15 @@ msmah_var_e_step <- function(Y, P_hat, mu, A_list, Sigma_list, p, pi = NULL, eps
       zprev_vec <- decode_z(zprev, M, p)
       i <- zprev_vec[1]
 
-      ap <- exp(logalpha[t-1, zprev])
-      if (ap == 0) next
+      ap <- logalpha[t-1, zprev]
+      if (!is.finite(ap)) next
 
       for (j in 1:M) {
         znew_vec <- c(j, zprev_vec[1:p])
         znew <- encode_z(znew_vec, M, p)
 
         # proportional to alpha_{t-1}(zprev) * P(i,j) * f(y_t|znew) * beta_t(znew)
-        J[i, j] <- J[i, j] + ap * (P_hat[i, j]) * exp(logg[znew, t]) * exp(logbeta[t, znew])
-      }
+        J[i, j] <- J[i, j] + exp(ap) * (P_hat[i, j]) * exp(logg[znew, t]) * exp(logbeta[t, znew])      }
     }
 
     smoothed_joint[[t]] <- J / (sum(J) + eps)
@@ -314,7 +313,7 @@ msmah_var_e_step <- function(Y, P_hat, mu, A_list, Sigma_list, p, pi = NULL, eps
 }
 
 #' @keywords internal
-msmah_var_m_step <- function(Y, gammaZ, smoothed_joint, mu_prev, A_prev, p, eps = 1e-10) {
+ms_var_m_step <- function(Y, gammaZ, smoothed_joint, mu_prev, A_prev, p, eps = 1e-10) {
   Tn <- nrow(Y)
   k  <- ncol(Y)
   M  <- length(mu_prev)
@@ -441,7 +440,7 @@ msmah_var_m_step <- function(Y, gammaZ, smoothed_joint, mu_prev, A_prev, p, eps 
   list(mu = mu_new, A_list = A_new, Sigma_list = Sigma_new, P_hat = P_new)
 }
 
-#' EM estimation for MSMAH-VAR model
+#' EM estimation for MSM-VAR model
 #'
 #' Fits a Markov-Switching Mean-Adjusted VAR(p) model using the EM algorithm.
 #' @param Y Data matrix (T x k)
@@ -458,7 +457,7 @@ msmah_var_m_step <- function(Y, gammaZ, smoothed_joint, mu_prev, A_prev, p, eps 
 #' @param verbose Print progress
 #' @return List with fitted parameters and log-likelihood
 #' @export
-msmah_var_em <- function(Y, p,
+ms_var_em <- function(Y, p,
                          mu_init, A_init, Sigma_init, P_init,
                          pi = NULL,
                          max_iter = 300, tol = 1e-6, eps = 1e-10,
@@ -478,10 +477,10 @@ msmah_var_em <- function(Y, p,
   ll <- numeric(max_iter)
 
   for (iter in 1:max_iter) {
-    E    <- msmah_var_e_step(Y, P_curr, mu_curr, A_curr, S_curr, p, pi = pi, eps = eps)
+    E    <- ms_var_e_step(Y, P_curr, mu_curr, A_curr, S_curr, p, pi = pi, eps = eps)
     ll[iter] <- E$loglik
 
-    Mres <- msmah_var_m_step(Y, E$gammaZ, E$smoothed_joint, mu_curr, A_curr, p, eps = eps)
+    Mres <- ms_var_m_step(Y, E$gammaZ, E$smoothed_joint, mu_curr, A_curr, p, eps = eps)
 
     # ---- Damped update: theta_new = theta_old + step_size * (theta_mstep - theta_old) ----
 
@@ -534,7 +533,7 @@ msmah_var_em <- function(Y, p,
 #' @param P_hat Estimated transition matrix
 #' @param digits Number of decimal places to print
 #' @export
-compare_msmah_var <- function(mu_true, A_true, S_true, P_true,
+compare_ms_var <- function(mu_true, A_true, S_true, P_true,
                               mu_hat,  A_hat,  S_hat,  P_hat,
                               digits = 4) {
 
