@@ -49,6 +49,49 @@ rmvnorm1 <- function(mean, Sigma) {
   as.numeric(mean + t(R) %*% rnorm(k))
 }
 
+#' Construct a regime-switching specification
+#'
+#' Declares which parameter blocks are allowed to vary by regime versus
+#' being pooled into a single shared estimate across all regimes. Passing
+#' the result to \code{ms_var_m_step} (via \code{ms_var_em}) controls how
+#' the M-step aggregates weighted sufficient statistics for each block.
+#'
+#' @param mu Logical; if \code{TRUE} (default), the mean vector varies by
+#'   regime. If \code{FALSE}, a single mean is estimated by pooling
+#'   responsibility-weighted statistics across all regimes.
+#' @param A Logical; if \code{TRUE} (default), the AR coefficient matrices
+#'   vary by regime. If \code{FALSE}, a single set of AR matrices is
+#'   estimated by pooling weighted least-squares statistics across regimes.
+#' @param Sigma Logical; if \code{TRUE} (default), the covariance matrix
+#'   varies by regime. If \code{FALSE}, a single covariance matrix is
+#'   estimated by pooling weighted residual outer products across regimes.
+#' @return A list of class \code{msmvar_switching} with logical elements
+#'   \code{mu}, \code{A}, \code{Sigma}.
+#' @examples
+#' make_switching()                       # fully switching (default)
+#' make_switching(A = FALSE)              # AR coefficients pooled/shared
+#' make_switching(mu = FALSE, A = FALSE)  # only Sigma switches by regime
+#' @export
+make_switching <- function(mu = TRUE, A = TRUE, Sigma = TRUE) {
+  stopifnot(is.logical(mu), length(mu) == 1,
+            is.logical(A), length(A) == 1,
+            is.logical(Sigma), length(Sigma) == 1)
+  structure(
+    list(mu = mu, A = A, Sigma = Sigma),
+    class = "msmvar_switching"
+  )
+}
+
+#' @export
+print.msmvar_switching <- function(x, ...) {
+  block_status <- function(flag) if (flag) "switching by regime" else "pooled across regimes"
+  cat("MSMVAR switching specification:\n")
+  cat("  mu    :", block_status(x$mu), "\n")
+  cat("  A     :", block_status(x$A), "\n")
+  cat("  Sigma :", block_status(x$Sigma), "\n")
+  invisible(x)
+}
+
 #' Simulate MSM-VAR(p) data
 #'
 #' @param T Number of time points
@@ -188,7 +231,85 @@ compute_log_g_allt <- function(Y, mu, A_list, Sigma_list, M, p, eps = 1e-12) {
   list(logg = logg, K = K)
 }
 
-#' @keywords internal
+#' Compute fitted values and residuals for an estimated MSMVAR model
+#'
+#' Derives fitted values and residuals directly from a set of estimated
+#' MSMVAR parameters (\code{mu}, \code{A_list}, \code{Sigma_list},
+#' \code{P_hat}). Internally re-runs the E-step (\code{ms_var_e_step}) at
+#' the estimated parameters to obtain the smoothed augmented-state
+#' responsibilities \code{gammaZ}, then constructs, at each t, the
+#' responsibility-weighted expectation of the conditional mean over
+#' \code{gammaZ[t, ]} — i.e. fitted values marginalize over regime
+#' uncertainty rather than conditioning on a single hard-classified regime
+#' path. Uses the same augmented-state conditional-mean construction as
+#' \code{compute_log_g_allt}.
+#'
+#' @param Y Data matrix (T x k)
+#' @param mu Estimated list of regime means
+#' @param A_list Estimated list of regime AR matrices
+#' @param Sigma_list Estimated list of regime covariance matrices
+#' @param P_hat Estimated transition matrix
+#' @param p VAR lag order
+#' @param pi Initial regime probabilities used for the E-step (default
+#'   uniform)
+#' @param eps Small constant for numerical stability, passed to the E-step
+#' @return A list with \code{fitted} (T x k matrix of fitted values),
+#'   \code{resid} (T x k matrix of residuals, \code{Y - fitted}), and
+#'   \code{gammaZ} (the smoothed augmented-state responsibilities used to
+#'   construct the fitted values, for reuse/inspection)
+#' @export
+compute_fitted_msmvar <- function(Y, mu, A_list, Sigma_list, P_hat, p,
+                                  pi = NULL, eps = 1e-12) {
+  Tn <- nrow(Y)
+  k  <- ncol(Y)
+  M  <- length(mu)
+  stopifnot(nrow(P_hat) == M, ncol(P_hat) == M)
+
+  E <- ms_var_e_step(Y, P_hat, mu, A_list, Sigma_list, p, pi = pi, eps = eps)
+  gammaZ <- E$gammaZ
+  K <- ncol(gammaZ)
+
+  fitted <- matrix(0, nrow = Tn, ncol = k)
+
+  for (t in 1:Tn) {
+    q <- min(p, t - 1)
+    mean_t_accum <- rep(0, k)
+
+    for (z in 1:K) {
+      w <- gammaZ[t, z]
+      if (w <= 0) next
+      zt <- decode_z(z, M, p)
+      st <- zt[1]
+
+      mean_t <- mu[[st]]
+      if (q > 0) {
+        for (lag in 1:q) {
+          s_lag <- zt[lag + 1]
+          if (s_lag == 0) next
+          mean_t <- mean_t + A_list[[st]][[lag]] %*% (Y[t-lag, ] - mu[[s_lag]])
+        }
+      }
+
+      mean_t_accum <- mean_t_accum + w * as.numeric(mean_t)
+    }
+
+    fitted[t, ] <- mean_t_accum
+  }
+
+  resid <- Y - fitted
+  list(fitted = fitted, resid = resid, gammaZ = gammaZ)
+}
+
+#' E-step for MSM-VAR EM estimation
+#'
+#' Runs the forward-backward algorithm (in log space, with scaling) over the
+#' augmented state space to produce smoothed regime probabilities and the
+#' data log-likelihood, given a fixed set of model parameters. Called
+#' internally by \code{ms_var_em} at each EM iteration, but also exported
+#' for direct use — e.g. to compute smoothed probabilities for a already-
+#' fitted model without re-running the full EM loop.
+#'
+#' @export
 ms_var_e_step <- function(Y, P_hat, mu, A_list, Sigma_list, p, pi = NULL, eps = 1e-12) {
   Tn <- nrow(Y)
   M  <- nrow(P_hat)
@@ -312,18 +433,30 @@ ms_var_e_step <- function(Y, P_hat, mu, A_list, Sigma_list, p, pi = NULL, eps = 
   )
 }
 
-#' @keywords internal
-ms_var_m_step <- function(Y, gammaZ, smoothed_joint, mu_prev, A_prev, p, eps = 1e-10) {
+#' M-step for MSM-VAR EM estimation
+#'
+#' Updates \code{mu}, \code{A_list}, \code{Sigma_list}, and \code{P_hat}
+#' given the smoothed responsibilities from the E-step. The
+#' \code{switching} argument (see \code{\link{make_switching}}) controls,
+#' block by block, whether weighted sufficient statistics are kept separate
+#' per regime or pooled into a single shared estimate. Called internally by
+#' \code{ms_var_em} at each EM iteration, but also exported for direct use.
+#'
+#' @export
+ms_var_m_step <- function(Y, gammaZ, smoothed_joint, mu_prev, A_prev, p,
+                          switching = make_switching(), eps = 1e-10) {
   Tn <- nrow(Y)
   k  <- ncol(Y)
   M  <- length(mu_prev)
   K  <- ncol(gammaZ)
   stopifnot(K == M * (M + 1)^p)
+  stopifnot(inherits(switching, "msmvar_switching"))
 
-  # ---- (A) Update A_\{lag,j\} via weighted multivariate LS ----
-  A_new <- vector("list", M)
+  # ---- (A) Accumulate per-regime WLS sufficient statistics for A ----
+  XtWX_list <- vector("list", M)
+  XtWY_list <- vector("list", M)
+
   for (j in 1:M) {
-    # Accumulate XtWX and XtWY where X is kp and Ytil is k
     XtWX <- matrix(0, nrow = k*p, ncol = k*p)
     XtWY <- matrix(0, nrow = k*p, ncol = k)
 
@@ -353,18 +486,35 @@ ms_var_m_step <- function(Y, gammaZ, smoothed_joint, mu_prev, A_prev, p, eps = 1
       }
     }
 
-    B <- solve(XtWX + eps * diag(k*p), XtWY)            # (kp x k)
-
-    Aj <- vector("list", p)
-    for (lag in 1:p) {
-      rows <- (1 + (lag-1)*k):(lag*k)                   # k rows
-      Aj[[lag]] <- t(B[rows, , drop = FALSE])           # k x k
-    }
-    A_new[[j]] <- Aj
+    XtWX_list[[j]] <- XtWX
+    XtWY_list[[j]] <- XtWY
   }
 
-  # ---- (B) Update mu_j (vector) using A_new and mu_prev in lag centering ----
-  mu_new <- vector("list", M)
+  solve_A_block <- function(XtWX, XtWY) {
+    B <- solve(XtWX + eps * diag(k*p), XtWY)             # (kp x k)
+    Aj <- vector("list", p)
+    for (lag in 1:p) {
+      rows <- (1 + (lag-1)*k):(lag*k)                    # k rows
+      Aj[[lag]] <- t(B[rows, , drop = FALSE])            # k x k
+    }
+    Aj
+  }
+
+  A_new <- vector("list", M)
+  if (switching$A) {
+    for (j in 1:M) A_new[[j]] <- solve_A_block(XtWX_list[[j]], XtWY_list[[j]])
+  } else {
+    # pool WLS sufficient statistics across regimes -> one shared A for all j
+    XtWX_pool <- Reduce(`+`, XtWX_list)
+    XtWY_pool <- Reduce(`+`, XtWY_list)
+    Aj_shared <- solve_A_block(XtWX_pool, XtWY_pool)
+    for (j in 1:M) A_new[[j]] <- Aj_shared
+  }
+
+  # ---- (B) Accumulate per-regime sufficient statistics for mu ----
+  mu_num <- vector("list", M)
+  mu_den <- numeric(M)
+
   for (j in 1:M) {
     num <- rep(0, k)
     den <- 0
@@ -391,11 +541,25 @@ ms_var_m_step <- function(Y, gammaZ, smoothed_joint, mu_prev, A_prev, p, eps = 1
       }
     }
 
-    mu_new[[j]] <- as.numeric(num / (den + eps))
+    mu_num[[j]] <- num
+    mu_den[j] <- den
   }
 
-  # ---- (C) Update Sigma_j using mu_new and A_new (skip dummy lags) ----
-  Sigma_new <- vector("list", M)
+  mu_new <- vector("list", M)
+  if (switching$mu) {
+    for (j in 1:M) mu_new[[j]] <- as.numeric(mu_num[[j]] / (mu_den[j] + eps))
+  } else {
+    # pool weighted sums across regimes -> one shared mu for all j
+    num_pool <- Reduce(`+`, mu_num)
+    den_pool <- sum(mu_den)
+    shared_mu <- as.numeric(num_pool / (den_pool + eps))
+    for (j in 1:M) mu_new[[j]] <- shared_mu
+  }
+
+  # ---- (C) Accumulate per-regime sufficient statistics for Sigma ----
+  S_list <- vector("list", M)
+  S_den  <- numeric(M)
+
   for (j in 1:M) {
     S <- matrix(0, k, k)
     den <- 0
@@ -423,12 +587,27 @@ ms_var_m_step <- function(Y, gammaZ, smoothed_joint, mu_prev, A_prev, p, eps = 1
       }
     }
 
-    S <- S / (den + eps)
-    diag(S) <- diag(S) + eps
-    Sigma_new[[j]] <- S
+    S_list[[j]] <- S
+    S_den[j] <- den
   }
 
-  # ---- (D) Update transition matrix P ----
+  Sigma_new <- vector("list", M)
+  if (switching$Sigma) {
+    for (j in 1:M) {
+      S <- S_list[[j]] / (S_den[j] + eps)
+      diag(S) <- diag(S) + eps
+      Sigma_new[[j]] <- S
+    }
+  } else {
+    # pool weighted residual outer products across regimes -> one shared Sigma
+    S_pool <- Reduce(`+`, S_list)
+    den_pool <- sum(S_den)
+    S_shared <- S_pool / (den_pool + eps)
+    diag(S_shared) <- diag(S_shared) + eps
+    for (j in 1:M) Sigma_new[[j]] <- S_shared
+  }
+
+  # ---- (D) Update transition matrix P (always regime-specific) ----
   P_new <- matrix(0, M, M)
   for (i in 1:M) {
     for (j in 1:M) {
@@ -450,6 +629,11 @@ ms_var_m_step <- function(Y, gammaZ, smoothed_joint, mu_prev, A_prev, p, eps = 1
 #' @param Sigma_init Initial covariance matrices list
 #' @param P_init Initial transition matrix
 #' @param pi Initial regime probabilities (optional)
+#' @param switching A switching specification from \code{\link{make_switching}}
+#'   controlling which of \code{mu}, \code{A}, \code{Sigma} vary by regime
+#'   versus are pooled across regimes. Defaults to fully switching, i.e.
+#'   \code{make_switching()}, which matches the previous (pre-MSMVAR)
+#'   behavior of this function.
 #' @param max_iter Maximum iterations
 #' @param tol Convergence tolerance
 #' @param eps Small constant for stability
@@ -458,11 +642,14 @@ ms_var_m_step <- function(Y, gammaZ, smoothed_joint, mu_prev, A_prev, p, eps = 1
 #' @return List with fitted parameters and log-likelihood
 #' @export
 ms_var_em <- function(Y, p,
-                         mu_init, A_init, Sigma_init, P_init,
-                         pi = NULL,
-                         max_iter = 300, tol = 1e-6, eps = 1e-10,
-                         step_size = 0.5,        # <-- new parameter
-                         verbose = TRUE) {
+                      mu_init, A_init, Sigma_init, P_init,
+                      pi = NULL,
+                      switching = make_switching(),
+                      max_iter = 300, tol = 1e-6, eps = 1e-10,
+                      step_size = 0.5,        # <-- new parameter
+                      verbose = TRUE) {
+
+  stopifnot(inherits(switching, "msmvar_switching"))
 
   Tn <- nrow(Y)
   M <- nrow(P_init)
@@ -480,7 +667,8 @@ ms_var_em <- function(Y, p,
     E    <- ms_var_e_step(Y, P_curr, mu_curr, A_curr, S_curr, p, pi = pi, eps = eps)
     ll[iter] <- E$loglik
 
-    Mres <- ms_var_m_step(Y, E$gammaZ, E$smoothed_joint, mu_curr, A_curr, p, eps = eps)
+    Mres <- ms_var_m_step(Y, E$gammaZ, E$smoothed_joint, mu_curr, A_curr, p,
+                          switching = switching, eps = eps)
 
     # ---- Damped update: theta_new = theta_old + step_size * (theta_mstep - theta_old) ----
 
@@ -520,7 +708,8 @@ ms_var_em <- function(Y, p,
     }
   }
 
-  list(mu = mu_curr, A_list = A_curr, Sigma_list = S_curr, P_hat = P_curr, loglik = ll)
+  list(mu = mu_curr, A_list = A_curr, Sigma_list = S_curr, P_hat = P_curr, loglik = ll,
+       switching = switching)
 }
 #' Compare fitted vs true parameters
 #' @param mu_true List of true mean vectors
@@ -534,8 +723,8 @@ ms_var_em <- function(Y, p,
 #' @param digits Number of decimal places to print
 #' @export
 compare_ms_var <- function(mu_true, A_true, S_true, P_true,
-                              mu_hat,  A_hat,  S_hat,  P_hat,
-                              digits = 4) {
+                           mu_hat,  A_hat,  S_hat,  P_hat,
+                           digits = 4) {
 
   M <- nrow(P_true)
   p <- length(A_true[[1]])

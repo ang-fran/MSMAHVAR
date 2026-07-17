@@ -12,6 +12,7 @@ ms_var_em(
   Sigma_init,
   P_init,
   pi = NULL,
+  switching = make_switching(),
   max_iter = 300,
   tol = 1e-06,
   eps = 1e-10,
@@ -33,6 +34,12 @@ ms_var_em(
 \item{P_init}{Initial transition matrix}
 
 \item{pi}{Initial regime probabilities (optional)}
+
+\item{switching}{A switching specification from \code{\link{make_switching}}
+controlling which of \code{mu}, \code{A}, \code{Sigma} vary by regime
+versus are pooled across regimes. Defaults to fully switching, i.e.
+\code{make_switching()}, which matches the previous (pre-MSMVAR)
+behavior of this function.}
 
 \item{max_iter}{Maximum iterations}
 
